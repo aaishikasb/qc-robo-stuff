@@ -18,8 +18,10 @@
 #if defined(ARDUINO_ARCH_ZEPHYR)
 #include <Arduino_RouterBridge.h>
 #define HAS_ROUTER_BRIDGE 1
+#define CMD_IO Monitor
 #else
 #define HAS_ROUTER_BRIDGE 0
+#define CMD_IO Serial
 #endif
 
 #if defined(ARDUINO_ARCH_ZEPHYR)
@@ -51,6 +53,8 @@ bool driveTimerActive = false;
 uint8_t speedPercent = 55;
 bool obstacleAvoidEnabled = false;
 unsigned long lastAvoidUpdate = 0;
+String commandBuffer;
+unsigned long lastCommandByteAt = 0;
 
 int clampInt(int value, int low, int high) {
   if (value < low) {
@@ -494,19 +498,19 @@ void motorPulse(uint8_t motorIndex) {
 }
 
 void printHelp() {
-  Serial.println();
-  Serial.println(F("Hiwonder miniAuto commands:"));
-  Serial.println(F("  ? help"));
-  Serial.println(F("  r read sensors"));
-  Serial.println(F("  l RGB blink"));
-  Serial.println(F("  z buzzer chirp"));
-  Serial.println(F("  u ultrasonic distance"));
-  Serial.println(F("  v servo center-open-close-center"));
-  Serial.println(F("  1..4 motor tests: 1=front-left, 2=front-right, 3=rear-right, 4=rear-left"));
-  Serial.println(F("  f/b/a/d/q/e/x forward/back/left/right/rotate-left/rotate-right/stop"));
-  Serial.println(F("Line API: drive(command,speed,ms), stop, read_sensors, servo(angle), buzz, led(on), rgb(r,g,b), drive_raw(m0,m1,m2,m3,ms), health"));
-  Serial.println(F("Hiwonder protocol also works: A|2|&, B|255|0|0|&, C|50|&, D|&, E|30|&, F|0|&"));
-  Serial.println();
+  CMD_IO.println();
+  CMD_IO.println(F("Hiwonder miniAuto commands:"));
+  CMD_IO.println(F("  ? help"));
+  CMD_IO.println(F("  r read sensors"));
+  CMD_IO.println(F("  l RGB blink"));
+  CMD_IO.println(F("  z buzzer chirp"));
+  CMD_IO.println(F("  u ultrasonic distance"));
+  CMD_IO.println(F("  v servo center-open-close-center"));
+  CMD_IO.println(F("  1..4 motor tests: 1=front-left, 2=front-right, 3=rear-right, 4=rear-left"));
+  CMD_IO.println(F("  f/b/a/d/q/e/x forward/back/left/right/rotate-left/rotate-right/stop"));
+  CMD_IO.println(F("Line API: drive(command,speed,ms), stop, read_sensors, servo(angle), buzz, led(on), rgb(r,g,b), drive_raw(m0,m1,m2,m3,ms), health"));
+  CMD_IO.println(F("Hiwonder protocol also works: A|2|&, B|255|0|0|&, C|50|&, D|&, E|30|&, F|0|&"));
+  CMD_IO.println();
 }
 
 void handleSingleCommand(char command) {
@@ -515,7 +519,7 @@ void handleSingleCommand(char command) {
       printHelp();
       break;
     case 'r':
-      Serial.println(readSensorsJson());
+      CMD_IO.println(readSensorsJson());
       break;
     case 'l':
       setRgb(255, 0, 0);
@@ -529,71 +533,71 @@ void handleSingleCommand(char command) {
       delay(180);
       setRgb(0, 0, 0);
       setUltrasonicColor(0, 0, 0);
-      Serial.println(F("OK led"));
+      CMD_IO.println(F("OK led"));
       break;
     case 'z':
       chirp();
-      Serial.println(F("OK buzz"));
+      CMD_IO.println(F("OK buzz"));
       break;
     case 'u':
-      Serial.print(F("ultrasonic_mm="));
-      Serial.println(readUltrasonicMm());
+      CMD_IO.print(F("ultrasonic_mm="));
+      CMD_IO.println(readUltrasonicMm());
       break;
     case 'v':
       setServoAngle(90);
       setServoAngle(150);
       setServoAngle(30);
       setServoAngle(90);
-      Serial.println(F("OK servo"));
+      CMD_IO.println(F("OK servo"));
       break;
     case '1':
       motorPulse(0);
-      Serial.println(F("OK M0 front-left"));
+      CMD_IO.println(F("OK M0 front-left"));
       break;
     case '2':
       motorPulse(1);
-      Serial.println(F("OK M1 front-right"));
+      CMD_IO.println(F("OK M1 front-right"));
       break;
     case '3':
       motorPulse(2);
-      Serial.println(F("OK M2 rear-right"));
+      CMD_IO.println(F("OK M2 rear-right"));
       break;
     case '4':
       motorPulse(3);
-      Serial.println(F("OK M3 rear-left"));
+      CMD_IO.println(F("OK M3 rear-left"));
       break;
     case 'f':
       driveCommand("forward", DEFAULT_SPEED, DEFAULT_PULSE_MS);
-      Serial.println(F("OK forward"));
+      CMD_IO.println(F("OK forward"));
       break;
     case 'b':
       driveCommand("backward", DEFAULT_SPEED, DEFAULT_PULSE_MS);
-      Serial.println(F("OK backward"));
+      CMD_IO.println(F("OK backward"));
       break;
     case 'a':
       driveCommand("left", DEFAULT_SPEED, DEFAULT_PULSE_MS);
-      Serial.println(F("OK left"));
+      CMD_IO.println(F("OK left"));
       break;
     case 'd':
       driveCommand("right", DEFAULT_SPEED, DEFAULT_PULSE_MS);
-      Serial.println(F("OK right"));
+      CMD_IO.println(F("OK right"));
       break;
     case 'q':
       driveCommand("rotate_left", DEFAULT_SPEED, DEFAULT_PULSE_MS);
-      Serial.println(F("OK rotate_left"));
+      CMD_IO.println(F("OK rotate_left"));
       break;
     case 'e':
       driveCommand("rotate_right", DEFAULT_SPEED, DEFAULT_PULSE_MS);
-      Serial.println(F("OK rotate_right"));
+      CMD_IO.println(F("OK rotate_right"));
       break;
     case 'x':
       stopMotors();
       obstacleAvoidEnabled = false;
-      Serial.println(F("OK stop"));
+      CMD_IO.println(F("OK stop"));
       break;
     default:
-      Serial.print(F("ERR unknown command "));
-      Serial.println(command);
+      CMD_IO.print(F("ERR unknown command "));
+      CMD_IO.println(command);
       break;
   }
 }
@@ -619,7 +623,7 @@ void handleHiwonderProtocol(String line) {
       case 11: stopMotors(); break;
       default: stopMotors(); break;
     }
-    Serial.println(F("A|OK|$"));
+    CMD_IO.println(F("A|OK|$"));
     return;
   }
 
@@ -629,31 +633,31 @@ void handleHiwonderProtocol(String line) {
     uint8_t b = (uint8_t)clampInt(tokenAt(line, 3).toInt(), 0, 255);
     setRgb(r, g, b);
     setUltrasonicColor(r, g, b);
-    Serial.println(F("B|OK|$"));
+    CMD_IO.println(F("B|OK|$"));
     return;
   }
 
   if (function == "C") {
     speedPercent = (uint8_t)clampInt(tokenAt(line, 1).toInt(), 10, 100);
-    Serial.print(F("C|"));
-    Serial.print(speedPercent);
-    Serial.println(F("|$"));
+    CMD_IO.print(F("C|"));
+    CMD_IO.print(speedPercent);
+    CMD_IO.println(F("|$"));
     return;
   }
 
   if (function == "D") {
-    Serial.print(F("$"));
-    Serial.print(readUltrasonicMm());
-    Serial.print(F(","));
-    Serial.print(readBatteryMv());
-    Serial.println(F("$"));
+    CMD_IO.print(F("$"));
+    CMD_IO.print(readUltrasonicMm());
+    CMD_IO.print(F(","));
+    CMD_IO.print(readBatteryMv());
+    CMD_IO.println(F("$"));
     return;
   }
 
   if (function == "E") {
     int increase = clampInt(tokenAt(line, 1).toInt(), 0, 60);
     setServoAngle(90 + increase);
-    Serial.println(F("E|OK|$"));
+    CMD_IO.println(F("E|OK|$"));
     return;
   }
 
@@ -662,11 +666,11 @@ void handleHiwonderProtocol(String line) {
     if (!obstacleAvoidEnabled) {
       stopMotors();
     }
-    Serial.println(F("F|OK|$"));
+    CMD_IO.println(F("F|OK|$"));
     return;
   }
 
-  Serial.println(F("ERR hiwonder protocol"));
+  CMD_IO.println(F("ERR hiwonder protocol"));
 }
 
 void handleLineCommand(String line) {
@@ -692,31 +696,31 @@ void handleLineCommand(String line) {
     String direction = tokenAt(line, 1);
     int speed = tokenAt(line, 2).length() ? tokenAt(line, 2).toInt() : DEFAULT_SPEED;
     int duration = tokenAt(line, 3).length() ? tokenAt(line, 3).toInt() : 0;
-    Serial.println(driveCommand(direction, speed, duration) ? F("OK drive") : F("ERR drive"));
+    CMD_IO.println(driveCommand(direction, speed, duration) ? F("OK drive") : F("ERR drive"));
     return;
   }
 
   if (command == "stop") {
     stopMotors();
     obstacleAvoidEnabled = false;
-    Serial.println(F("OK stop"));
+    CMD_IO.println(F("OK stop"));
     return;
   }
 
   if (command == "read_sensors" || command == "sensors") {
-    Serial.println(readSensorsJson());
+    CMD_IO.println(readSensorsJson());
     return;
   }
 
   if (command == "servo") {
     setServoAngle(tokenAt(line, 1).toInt());
-    Serial.println(F("OK servo"));
+    CMD_IO.println(F("OK servo"));
     return;
   }
 
   if (command == "buzz") {
     chirp();
-    Serial.println(F("OK buzz"));
+    CMD_IO.println(F("OK buzz"));
     return;
   }
 
@@ -724,7 +728,7 @@ void handleLineCommand(String line) {
     bool on = tokenAt(line, 1).toInt() != 0;
     setRgb(on ? 255 : 0, on ? 255 : 0, on ? 255 : 0);
     setUltrasonicColor(on ? 255 : 0, on ? 255 : 0, on ? 255 : 0);
-    Serial.println(F("OK led"));
+    CMD_IO.println(F("OK led"));
     return;
   }
 
@@ -734,7 +738,7 @@ void handleLineCommand(String line) {
     uint8_t b = (uint8_t)clampInt(tokenAt(line, 3).toInt(), 0, 255);
     setRgb(r, g, b);
     setUltrasonicColor(r, g, b);
-    Serial.println(F("OK rgb"));
+    CMD_IO.println(F("OK rgb"));
     return;
   }
 
@@ -745,7 +749,7 @@ void handleLineCommand(String line) {
     int m3 = tokenAt(line, 4).toInt();
     int duration = tokenAt(line, 5).length() ? tokenAt(line, 5).toInt() : 0;
     driveRaw(m0, m1, m2, m3, duration);
-    Serial.println(F("OK drive_raw"));
+    CMD_IO.println(F("OK drive_raw"));
     return;
   }
 
@@ -757,21 +761,70 @@ void handleLineCommand(String line) {
     json += ",\"bridge\":true";
 #endif
     json += "}";
-    Serial.println(json);
+    CMD_IO.println(json);
     return;
   }
 
-  Serial.println(F("ERR unknown line command"));
+  CMD_IO.println(F("ERR unknown line command"));
+}
+
+bool isSingleCommandChar(char command) {
+  switch (command) {
+    case '?':
+    case 'r':
+    case 'l':
+    case 'z':
+    case 'u':
+    case 'v':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case 'f':
+    case 'b':
+    case 'a':
+    case 'd':
+    case 'q':
+    case 'e':
+    case 'x':
+      return true;
+    default:
+      return false;
+  }
 }
 
 void pollSerial() {
-  if (!Serial.available()) {
-    return;
+  bool received = false;
+
+  while (CMD_IO.available()) {
+    char incoming = (char)CMD_IO.read();
+    received = true;
+    lastCommandByteAt = millis();
+
+    if (incoming == '\r' || incoming == '\n') {
+      if (commandBuffer.length() > 0) {
+        handleLineCommand(commandBuffer);
+        commandBuffer = "";
+      }
+      continue;
+    }
+
+    if (commandBuffer.length() == 0 && isSingleCommandChar(incoming) && CMD_IO.available() == 0) {
+      handleSingleCommand(incoming);
+      continue;
+    }
+
+    commandBuffer += incoming;
+    if (incoming == '&' || incoming == ')' || commandBuffer.length() >= 96) {
+      handleLineCommand(commandBuffer);
+      commandBuffer = "";
+    }
   }
 
-  String line = Serial.readStringUntil('\n');
-  line.trim();
-  handleLineCommand(line);
+  if (!received && commandBuffer.length() > 0 && millis() - lastCommandByteAt > 80) {
+    handleLineCommand(commandBuffer);
+    commandBuffer = "";
+  }
 }
 
 void updateDriveTimer() {
@@ -811,8 +864,8 @@ void setupPins() {
 }
 
 void setup() {
-  Serial.begin(9600);
-  Serial.setTimeout(80);
+  CMD_IO.begin(9600);
+  CMD_IO.setTimeout(80);
   Wire.begin();
   setupPins();
   setUltrasonicColor(0, 0, 0);
@@ -821,7 +874,7 @@ void setup() {
     registerBridgeMethods();
   }
 #endif
-  Serial.println(F("Hiwonder miniAuto command sketch ready."));
+  CMD_IO.println(F("Hiwonder miniAuto command sketch ready."));
   printHelp();
 }
 
