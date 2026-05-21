@@ -1,0 +1,20 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+models/cache/
+artifacts/
+
+# Keep model binaries out of git; keep the manifest/docs that say where they came from.
+*.onnx
+*.tflite
+*.dlc
+*.bin
+*.data
+*.eim
+*.pt
+*.pth
+*.zip
+*.tar
+*.tar.gz
+.venv/
