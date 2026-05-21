@@ -15,6 +15,19 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+#if defined(ARDUINO_ARCH_ZEPHYR)
+#include <Arduino_RouterBridge.h>
+#define HAS_ROUTER_BRIDGE 1
+#else
+#define HAS_ROUTER_BRIDGE 0
+#endif
+
+#if defined(ARDUINO_ARCH_ZEPHYR)
+const char MCU_NAME[] = "uno_q";
+#else
+const char MCU_NAME[] = "uno_r3";
+#endif
+
 const uint8_t PIN_RGB = 2;
 const uint8_t PIN_BUZZER = 3;
 const uint8_t PIN_SERVO = 5;
@@ -122,6 +135,7 @@ int readBatteryMv() {
   return (int)(analogRead(PIN_BATTERY) * 29.89);
 }
 
+#if defined(ARDUINO_ARCH_AVR)
 void rgbDelay(uint8_t cycles) {
   while (cycles--) {
     asm volatile("nop\n\t");
@@ -158,6 +172,35 @@ void setRgb(uint8_t r, uint8_t g, uint8_t b) {
   interrupts();
   delayMicroseconds(80);
 }
+#else
+void rgbSendBitSlow(bool one) {
+  digitalWrite(PIN_RGB, HIGH);
+  if (one) {
+    delayMicroseconds(1);
+  }
+  digitalWrite(PIN_RGB, LOW);
+  if (!one) {
+    delayMicroseconds(1);
+  }
+}
+
+void rgbSendByteSlow(uint8_t value) {
+  for (int8_t bit = 7; bit >= 0; bit--) {
+    rgbSendBitSlow(value & (1 << bit));
+  }
+}
+
+void setRgb(uint8_t r, uint8_t g, uint8_t b) {
+  // Portable fallback for non-AVR cores. The I2C ultrasonic RGB is the reliable
+  // status light on UNO Q; this best-effort WS2812 pulse path keeps builds portable.
+  noInterrupts();
+  rgbSendByteSlow(g);
+  rgbSendByteSlow(r);
+  rgbSendByteSlow(b);
+  interrupts();
+  delayMicroseconds(80);
+}
+#endif
 
 void motorsSetPercent(int motor0, int motor1, int motor2, int motor3) {
   int motors[4] = {
@@ -351,7 +394,9 @@ String readSensorsJson() {
 
   String json = "{";
   json += "\"robot\":\"hiwonder_miniauto\"";
-  json += ",\"mcu\":\"uno_r3\"";
+  json += ",\"mcu\":\"";
+  json += MCU_NAME;
+  json += "\"";
   json += ",\"ir\":-1";
   json += ",\"line_ok\":";
   json += lineOk ? "true" : "false";
@@ -382,6 +427,60 @@ String readSensorsJson() {
   json += "}";
   return json;
 }
+
+#if HAS_ROUTER_BRIDGE
+bool rpcDrive(String command, int speed, int durationMs) {
+  return driveCommand(command, speed, durationMs);
+}
+
+bool rpcStop() {
+  stopMotors();
+  obstacleAvoidEnabled = false;
+  return true;
+}
+
+String rpcReadSensors() {
+  return readSensorsJson();
+}
+
+bool rpcServo(int angle) {
+  return setServoAngle(angle);
+}
+
+bool rpcBuzz() {
+  chirp();
+  return true;
+}
+
+bool rpcLed(bool on) {
+  setRgb(on ? 255 : 0, on ? 255 : 0, on ? 255 : 0);
+  setUltrasonicColor(on ? 255 : 0, on ? 255 : 0, on ? 255 : 0);
+  return true;
+}
+
+bool rpcDriveRaw(int motor0, int motor1, int motor2, int motor3, int durationMs) {
+  driveRaw(motor0, motor1, motor2, motor3, durationMs);
+  return true;
+}
+
+String rpcHealth() {
+  String json = "{\"robot\":\"hiwonder_miniauto\",\"mcu\":\"";
+  json += MCU_NAME;
+  json += "\",\"bridge\":true,\"serial\":true}";
+  return json;
+}
+
+void registerBridgeMethods() {
+  Bridge.provide_safe("drive", rpcDrive);
+  Bridge.provide_safe("stop", rpcStop);
+  Bridge.provide_safe("read_sensors", rpcReadSensors);
+  Bridge.provide_safe("servo", rpcServo);
+  Bridge.provide_safe("buzz", rpcBuzz);
+  Bridge.provide_safe("led", rpcLed);
+  Bridge.provide_safe("drive_raw", rpcDriveRaw);
+  Bridge.provide_safe("health", rpcHealth);
+}
+#endif
 
 void motorPulse(uint8_t motorIndex) {
   int motors[4] = {0, 0, 0, 0};
@@ -651,7 +750,14 @@ void handleLineCommand(String line) {
   }
 
   if (command == "health") {
-    Serial.println(F("{\"robot\":\"hiwonder_miniauto\",\"mcu\":\"uno_r3\",\"serial\":true}"));
+    String json = "{\"robot\":\"hiwonder_miniauto\",\"mcu\":\"";
+    json += MCU_NAME;
+    json += "\",\"serial\":true";
+#if HAS_ROUTER_BRIDGE
+    json += ",\"bridge\":true";
+#endif
+    json += "}";
+    Serial.println(json);
     return;
   }
 
@@ -710,6 +816,11 @@ void setup() {
   Wire.begin();
   setupPins();
   setUltrasonicColor(0, 0, 0);
+#if HAS_ROUTER_BRIDGE
+  if (Bridge.begin()) {
+    registerBridgeMethods();
+  }
+#endif
   Serial.println(F("Hiwonder miniAuto command sketch ready."));
   printHelp();
 }
