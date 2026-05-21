@@ -38,6 +38,7 @@ const uint8_t PIN_BATTERY = A3;
 const uint8_t MOTOR_PWM_PIN[4] = {10, 9, 6, 11};
 const uint8_t MOTOR_DIR_PIN[4] = {12, 8, 7, 13};
 const uint8_t MOTOR_DIR_CANDIDATE_PIN[4] = {12, 8, 7, 13};
+const uint8_t HEADER_DIR_SCAN_PIN[] = {2, 3, 4, 5, 7, 8, 12, 13, A0, A1, A2, A3};
 const uint8_t MOTOR_PWM_MIN = 2;
 const int MAX_DRIVE_MS = 5000;
 const int DEFAULT_PULSE_MS = 700;
@@ -511,6 +512,12 @@ void setAllDirCandidates(uint8_t value) {
   }
 }
 
+void setAllScanPins(uint8_t value) {
+  for (uint8_t i = 0; i < sizeof(HEADER_DIR_SCAN_PIN) / sizeof(HEADER_DIR_SCAN_PIN[0]); i++) {
+    digitalWrite(HEADER_DIR_SCAN_PIN[i], value);
+  }
+}
+
 void pulsePwmOnly(uint8_t motorIndex, uint16_t durationMs) {
   analogWrite(MOTOR_PWM_PIN[motorIndex], 180);
   delay(durationMs);
@@ -557,6 +564,52 @@ void directionSweep(uint8_t motorIndex) {
   CMD_IO.println(F("DIR sweep done."));
 }
 
+void directionHeaderScan(uint8_t motorIndex) {
+  if (motorIndex > 3) {
+    CMD_IO.println(F("ERR dir_scan motor index must be 0..3"));
+    return;
+  }
+
+  stopMotors();
+  for (uint8_t i = 0; i < sizeof(HEADER_DIR_SCAN_PIN) / sizeof(HEADER_DIR_SCAN_PIN[0]); i++) {
+    pinMode(HEADER_DIR_SCAN_PIN[i], OUTPUT);
+  }
+
+  CMD_IO.print(F("Header DIR scan for sketch M"));
+  CMD_IO.print(motorIndex);
+  CMD_IO.print(F(" / board "));
+  CMD_IO.print(MOTOR_BOARD_CONNECTOR[motorIndex]);
+  CMD_IO.print(F(" / PWM D"));
+  CMD_IO.println(MOTOR_PWM_PIN[motorIndex]);
+  CMD_IO.println(F("Watch for any candidate pin that reverses this motor."));
+  CMD_IO.println(F("Non-PWM scan pins: D2,D3,D4,D5,D7,D8,D12,D13,A0,A1,A2,A3"));
+
+  for (uint8_t i = 0; i < sizeof(HEADER_DIR_SCAN_PIN) / sizeof(HEADER_DIR_SCAN_PIN[0]); i++) {
+    setAllScanPins(LOW);
+    CMD_IO.print(F("baseline scan pins LOW, PWM D"));
+    CMD_IO.println(MOTOR_PWM_PIN[motorIndex]);
+    pulsePwmOnly(motorIndex, 450);
+
+    setAllScanPins(LOW);
+    digitalWrite(HEADER_DIR_SCAN_PIN[i], HIGH);
+    CMD_IO.print(F("candidate "));
+    if (HEADER_DIR_SCAN_PIN[i] >= A0) {
+      CMD_IO.print(F("A"));
+      CMD_IO.print(HEADER_DIR_SCAN_PIN[i] - A0);
+    } else {
+      CMD_IO.print(F("D"));
+      CMD_IO.print(HEADER_DIR_SCAN_PIN[i]);
+    }
+    CMD_IO.print(F(" HIGH, PWM D"));
+    CMD_IO.println(MOTOR_PWM_PIN[motorIndex]);
+    pulsePwmOnly(motorIndex, 650);
+  }
+
+  setAllScanPins(LOW);
+  stopMotors();
+  CMD_IO.println(F("Header DIR scan done."));
+}
+
 void printHelp() {
   CMD_IO.println();
   CMD_IO.println(F("Hiwonder miniAuto commands:"));
@@ -568,6 +621,7 @@ void printHelp() {
   CMD_IO.println(F("  v servo center-open-close-center"));
   CMD_IO.println(F("  1..4 motor tests: 1=M0/board M3, 2=M1/board M2, 3=M2/board M1, 4=M3/board M4"));
   CMD_IO.println(F("  dir_sweep(0..3) find which DIR pin reverses a PWM/motor channel"));
+  CMD_IO.println(F("  dir_scan(0..3) broad non-PWM header DIR scan"));
   CMD_IO.println(F("  f/b/a/d/q/e/x forward/back/left/right/rotate-left/rotate-right/stop"));
   CMD_IO.println(F("Line API: drive(command,speed,ms), stop, read_sensors, servo(angle), buzz, led(on), rgb(r,g,b), drive_raw(m0,m1,m2,m3,ms), health"));
   CMD_IO.println(F("Hiwonder protocol also works: A|2|&, B|255|0|0|&, C|50|&, D|&, E|30|&, F|0|&"));
@@ -816,6 +870,11 @@ void handleLineCommand(String line) {
 
   if (command == "dir_sweep" || command == "dirsweep") {
     directionSweep((uint8_t)tokenAt(line, 1).toInt());
+    return;
+  }
+
+  if (command == "dir_scan" || command == "dirscan") {
+    directionHeaderScan((uint8_t)tokenAt(line, 1).toInt());
     return;
   }
 
